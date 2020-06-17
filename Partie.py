@@ -259,8 +259,11 @@ class Partie:
                 vitdrift = somme_vect([newvit[0] / 40, newvit[1]], [39 * newvit[0] / 40, j.oridrift])
                 if newvit[0] < 0:
                     vitdrift[1] = normal_angle(vitdrift[1] + 180)
-                j.oridrift = vitdrift[1]
-                mvt = calc_mvt(vitdrift)
+                    j.oridrift = vitdrift[1]
+                    mvt = calc_mvt([-vitdrift[0], vitdrift[1]])
+                else:
+                    j.oridrift = vitdrift[1]
+                    mvt = calc_mvt(vitdrift)
 
             # nouvelle position
             newpos = [j.pos[0] + mvt[0], j.pos[1] + mvt[1]]
