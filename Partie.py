@@ -250,6 +250,10 @@ class Partie:
                 newvit[0] = j.limite_vit
             if newvit[0] <= -j.limite_vitarr:
                 newvit[0] = -j.limite_vitarr
+            # transforme une faible vitesse en immobilisation + réduction de la quantité d'infomations via la précision
+            if abs(newvit[0]) < 1:
+                newvit[0] **= 2
+            newvit = [round(newvit[0], 2), round(newvit[1], 0)]
 
             # mouvement (selon si drift ou non)
             if j.oridrift == -1:
@@ -269,7 +273,7 @@ class Partie:
             newpos = [j.pos[0] + mvt[0], j.pos[1] + mvt[1]]
 
             # réduction de la précision afin de réduire le volume d'infos à transmettre (reste précis tout de même)
-            newvit = [round(newvit[0], 2), round(newvit[1], 0)]
+            #newvit = [round(newvit[0], 2), round(newvit[1], 0)]
             newpos = [round(newpos[0], 2), round(newpos[1], 2)]
 
             # nouvelle surf et rect
@@ -281,15 +285,26 @@ class Partie:
             to_update_j_apri.append([newpos, newvit, newrect, [j.pos, j.vit, j.rect.copy()]])
 
         # calcul du to_update du ballon
+        # vitesse ballon
         newvit = [self.ballon.COEF_FROTT * self.ballon.vit[0], self.ballon.vit[1]]
+        # transforme une faible vitesse en immobilisation + réduction de la quantité d'infomations via la précision
+        if abs(newvit[0]) < 1:
+            newvit[0] **= 2
+        newvit = [round(newvit[0], 2), round(newvit[1], 0)]
+
+        # position ballon
         mvt = calc_mvt(newvit)
         newpos = [self.ballon.pos[0] + mvt[0], self.ballon.pos[1] + mvt[1]]
+        #réduction de la qté d'infos via la précision
+        newpos = [round(newpos[0], 2), round(newpos[1], 2)]
+
+        #rect ballon
         newrect = self.ballon.rect.copy()
         newrect[0], newrect[1] = int(newpos[0]), int(newpos[1])
 
         # réduction de la précision afin de réduire le volume d'infos à transmettre (reste précis tout de même)
-        newvit = [round(newvit[0], 2), round(newvit[1], 0)]
-        newpos = [round(newpos[0], 2), round(newpos[1], 2)]
+        #newvit = [round(newvit[0], 2), round(newvit[1], 0)]
+        #newpos = [round(newpos[0], 2), round(newpos[1], 2)]
 
         # to_update_b_apri = [newpos, newvit, newrect, mvt]
         to_update_b_apri = [newpos, newvit, newrect, [self.ballon.pos, self.ballon.vit, self.ballon.rect]]
