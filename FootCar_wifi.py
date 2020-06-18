@@ -199,6 +199,12 @@ def main():
     case_4joueurs = tk.Checkbutton(fenetre, variable=quatrejoueurs, text='4', command=case_2joueurs.toggle)
     windows_hostgame.append(canvas.create_window(150, 150, anchor='nw', window=case_4joueurs))
 
+    msg_info_hostplay = "Pour rejoindre la partie avec l'ordinateur qui héberge le serveur,\n" \
+                        "il suffit de lancer une seconde fenetre du jeu\n" \
+                        "et de rejoindre une partie sur la première adresse IP proposée"
+    champ_info_hostplay = tk.Label(fenetre, text=msg_info_hostplay, font=(None, 10))
+    windows_hostgame.append(canvas.create_window(0, 200, anchor='nw', window=champ_info_hostplay))
+    
     # creation des fenetres de widgets pour le menu joingame
 
     # widget label nom menu
