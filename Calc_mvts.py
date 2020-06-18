@@ -225,7 +225,7 @@ def collide_checker(to_update_j, to_update_b, obstacles):
 
         for i in range(len(to_update_j)):
             tuj2 = to_update_j[i]
-            if k != i:
+            if k < i:  # pour que la collision n'apparaisse pas 2 fois
                 segmts_contact = collide_orient_rect([tuj[2], tuj[1][1], 60, 40], [tuj2[2], tuj2[1][1], 60, 40])
                 if segmts_contact:
                     obj_coll.append(['JJ', k, i, segmts_contact])
@@ -243,47 +243,6 @@ def collide_checker(to_update_j, to_update_b, obstacles):
             obj_coll.append(['OB', n, 0, segmts_contact])
 
     return obj_coll
-
-"""
-def repos_collided_obj(obstacle, objet):
-    # annule le mvt de l'objet (ainsi que son mvt de rotation) de sorte à ne plus être en collision avec l'obstacle
-    # si la collision persiste, on ajoute autant le fois le mvt de l'obstacle que nécessaire pour l'empêcher
-
-    [pos, vit, rect, mvts, long, larg] = objet
-    if not isinstance(mvts[0], (float, int)):  # si c'est un joueur, il a un mvt et un mvt d'angle, sinon juste un mvt
-        mvt, mvt_a = mvts[0], mvts[1]
-    else:
-        mvt, mvt_a = mvts, 0
-
-    [posobst, vitobst, rectobst, mvtsobst, longobst, largobst] = obstacle
-    if not isinstance(mvtsobst[0], (float, int)):  # si c'est un joueur, il a un mvt et un mvt d'angle, sinon juste mvt
-        mvtobst = mvtsobst[0]
-    else:
-        mvtobst = mvtsobst
-
-    # on annule le mvt de l'objet
-    newmvt = [0, 0]
-    newpos = [pos[0] - mvt[0], pos[1] - mvt[1]]
-    newvit = [vit[0], vit[1] - mvt_a]
-    if mvt_a != 0:
-        newsurf = pygame.Surface([60, 40])
-        newsurf = pygame.transform.rotate(newsurf, newvit[1])
-        newrect = newsurf.get_rect(center=rect.center)
-    else:
-        newrect = rect
-    newrect[0], newrect[1] = int(newpos[0]), int(newpos[1])
-
-    # s'il y a toujours collision, on effectue en plus le mvt de l'obstacle, qui vient nécessairement vers l'objet
-    k = 0
-    while collide_orient_rect([newrect, newvit[1], long, larg], [rectobst, vitobst[1], longobst, largobst]):
-        k += 1
-        newmvt = [(mvtobst[0] - mvt[0]) * k, (mvtobst[1] - mvt[1]) * k]
-        newpos = [newpos[0] + newmvt[0], newpos[1] + newmvt[1]]
-        newrect[0], newrect[1] = int(newpos[0]), int(newpos[1])
-
-    newobjet = [newpos, newvit, newrect, newmvt]
-    return newobjet
-"""
 
 
 def check_collided_obj(obj, joueurs, obstacles):
@@ -390,205 +349,210 @@ def calc_mvts(to_update_j_apri, to_update_b_apri, obstacles, drifts):
     :param drifts: liste indiquant, pour chaque joueur, s'il drift
     :return: listes des nouveaux paramètres pour chaque joueur et le ballon, à appliquer aux méthodes update_dyn
     """
-    #print('nouvelle boucle')
 
     # tant que des objets sont en collision
     collisions = collide_checker(to_update_j_apri, to_update_b_apri, obstacles)
-    while collisions:
+    nouv_collisions = collisions
+    while nouv_collisions:
 
+        # idée: tous les objets en collision sont replacés où ils étaient et on change leur vitesse selon le choc
+        # on check d'abord les obejts en choc avec plusieurs autres objets, puis les chocs simples
+        # une fois la résolution terminée, on vérifie que les nouvelles positions n'entrainent pas d'autre choc
+        # si c'est le cas, on rerésout avec l'ancienne liste de chocs à laquelle on ajoute les nouveaux
+
+        #print(f"vitj: {to_update_j_apri[0][1], to_update_j_apri[1][1]}")
+        #print(f"vitb: {to_update_b_apri[1]}")
+        #msg = 'collisions: '
         #for colli in collisions:
-        #    print(colli[:3])
+        #    msg += str(colli[:3])
+        #if len(collisions) > 1:
+        #    print(msg)
 
+        coll_b = []
+        if len(to_update_j_apri) == 2:
+            coll_j = [[], []]
+        else:
+            coll_j = [[], [], [], []]
+
+        # on regarde si un objet est en contact avec plusieurs objets
         for colli in collisions:
+            if colli[0] == 'OB':
+                coll_b.append(colli)
+            elif colli[0] == 'JB':
+                coll_b.append(colli)
+                coll_j[colli[1]].append(colli)
+            elif colli[0] == 'JJ':
+                coll_j[colli[1]].append(colli)
+                coll_j[colli[2]].append(colli)
+            elif colli[0] == 'JO':
+                coll_j[colli[1]].append(colli)
 
-            # nouvelle methode plus simple: tous les objets en collision sont replacés où ils étaient juste avant
-            # et on change leur vitesse selon le choc
+        # si la balle est en contact avec plusieurs objets
+        if len(coll_b) > 1:
+            for coll in coll_b:
+
+                tub = to_update_b_apri
+                tub = mvtback(tub)
+                newvitb = [0, 0]
+
+                if coll[0] == 'JB':
+
+                    tuj = to_update_j_apri[coll[1]]
+
+                    newvitb = somme_vect(newvitb, tuj[1])  # on ajoute la vitesse de tous les joueurs pour le ballon
+
+                    tuj = mvtback(tuj)  # position précéddante
+                    tuj[1][0] = -tuj[3][1][0]  # inverse de la vitesse précédante
+
+                    to_update_j_apri[coll[1]] = tuj
+
+                else:  # 'OB'
+                    # si la balle frappe aussi un obstacle, alors sa nouvelle vitesse est la demie somme des new vitj
+                    newvitb[0] *= -0.5
+
+                if newvitb[0] < 0:
+                    newvitb[0] *= -1
+                    newvitb[1] = normal_angle(newvitb[1] + 180)
+                tub[1] = newvitb
+
+                to_update_b_apri = tub
+
+                collisions.remove(coll)
+
+        # si un des joueur est en contact avec plusieurs objets
+        for coll_joueur in coll_j:
+            if len(coll_joueur) > 1:
+                for coll in coll_joueur:
+
+                    tuj = to_update_j_apri[coll[1]]
+                    tuj = mvtback(tuj)
+                    tuj[1][0] = -tuj[3][1][0]
+
+                    if coll[0] == 'JJ':
+                        tuj2 = to_update_j_apri[coll[2]]
+                        tuj2 = mvtback(tuj2)
+                        tuj2[1][0] = -tuj2[3][1][0]
+                        to_update_j_apri[coll[2]] = tuj2
+                    elif coll[0] == 'JO':
+                        tuj[1][0] *= 0.5
+                    else:  # 'JB'
+                        tub = to_update_b_apri
+                        tub = mvtback(tub)
+                        to_update_b_apri = tub
+
+                    to_update_j_apri[coll[1]] = tuj
+
+                    collisions.remove(coll)
+
+        # toutes les collisions simples entre deux objets
+        for colli in collisions:
 
             if colli[0] == 'JB':
 
                 tuj = to_update_j_apri[colli[1]]
                 tub = to_update_b_apri
-                #print(f'tuj: {tuj}\ntub: {tub}')
+                # print(f'tuj: {tuj}\ntub: {tub}')
 
                 # on replace les rect où ils étaient à l'instant d'avant, normalement il ne se touchent donc pas
                 newtub = mvtback(tub)
                 newtuj = mvtback(tuj)
 
-                # on verifie qu'il n'y avait pas d'autre collision avec le ballon
-                autre_coll = False
-                # on check d'abord toutes les collisions du même instant
-                for autre_colli in collisions:
-                    if autre_colli != colli:
+                listevectplot = [newtub[1]]  # pour contenir les vecteurs à plotter pour faire des tests
 
-                        # si un autre joueur tape le ballon
-                        if autre_colli[0] == 'JB':
-                            autre_coll = True
+                # détermine le vecteur reflecteur du joueur
+                ori_ref = calc_ori_ref(tuj[2], colli[3][0][0])
+                coll_plusieurs_cotes = False
+                limites_ori = []
+                if len(colli[3]) > 1:  # si pluseuirs côtés du joueur sont en contact avec le ballon
+                    # print('plusieurs cotés du joueur touchés')
+                    coll_plusieurs_cotes = True
+                    limites_ori = [round(normal_angle(ori_ref), 2)]
+                    vect_ref = [1, ori_ref]
+                    for k in range(1, len(colli[3])):
+                        ori_ref = calc_ori_ref(tuj[2], colli[3][k][0])
+                        limites_ori.append(round(normal_angle(ori_ref), 2))
+                        vect_ref = somme_vect(vect_ref, [1, ori_ref])
+                    ori_ref = vect_ref[1]
+                # print(f'ori_ref du joueur: {ori_ref}')
+                listevectplot.append([10, ori_ref])
 
-                            # on replace également ce joueur
-                            tuj_autre = to_update_j_apri[autre_colli[1]]
-                            newtuj_autre = mvtback(tuj_autre)
-                            # on inverse sa vitesse
-                            newvitj_autre = [-newtuj_autre[1][0], newtuj_autre[1][1]]
-                            newtuj_autre[1] = newvitj_autre
-                            # on change le tuj correspondant dans la liste des tuj
-                            to_update_j_apri[autre_colli[1]] = newtuj_autre
-                            # on enleve la collision de la liste car on vient de la traiter
-                            collisions.remove(autre_colli)
-
-                        # si le ballon tape un obstacle
-                        elif autre_colli[0] == 'OB':
-                            autre_coll = True
-
-                            # on enleve la collision de la liste car on vient de la traiter
-                            collisions.remove(autre_colli)
-
-                # s'il n'y a pas d'autres collisions au meme instant, on déroule en vérifiant à la fin si le nouveau tub
-                # ne va pas entrer en collision avec autre chose à l'instant suivant, si oui on considere autre_coll
-
-                # on détermine alors la nouvelle vitesse du ballon:
-
-                # s'il n'y a pas eu d'autre collision avec le ballon
-                if not autre_coll:
-
-                    listevectplot = [newtub[1]]  # pour contenir les vecteurs à plotter pour faire des tests
-
-                    # détermine le vecteur reflecteur du joueur
-                    ori_ref = calc_ori_ref(tuj[2], colli[3][0][0])
-                    coll_plusieurs_cotes = False
-                    limites_ori = []
-                    if len(colli[3]) > 1:  # si pluseuirs côtés du joueur sont en contact avec le ballon
-                        #print('plusieurs cotés du joueur touchés')
-                        coll_plusieurs_cotes = True
-                        limites_ori = [round(normal_angle(ori_ref), 2)]
-                        vect_ref = [1, ori_ref]
-                        for k in range(1, len(colli[3])):
-                            ori_ref = calc_ori_ref(tuj[2], colli[3][k][0])
-                            limites_ori.append(round(normal_angle(ori_ref), 2))
-                            vect_ref = somme_vect(vect_ref, [1, ori_ref])
-                        ori_ref = vect_ref[1]
-                    #print(f'ori_ref du joueur: {ori_ref}')
-                    listevectplot.append([10, ori_ref])
-
-                    # déduit la vitesse de réflexion du ballon sur le joueur
-                    newvitb = calc_vit_reflexion(newtub[1], ori_ref)
-                    # il faut que le ballon ne rebondisse pas vers le joueur, ce qui peut arriver s'il tape un coin
-                    if coll_plusieurs_cotes:
-                        # apriori il y a 2 limites_ori, avec un écart de 90°
+                # déduit la vitesse de réflexion du ballon sur le joueur
+                newvitb = calc_vit_reflexion(newtub[1], ori_ref)
+                # il faut que le ballon ne rebondisse pas vers le joueur, ce qui peut arriver s'il tape un coin
+                if coll_plusieurs_cotes:
+                    # apriori il y a 2 limites_ori, avec un écart de 90°
+                    limites_ori.sort()
+                    if limites_ori[-1] > 270 and limites_ori[0] < 90:
+                        limites_ori[0] += 360
                         limites_ori.sort()
-                        if limites_ori[-1] > 270 and limites_ori[0] < 90:
-                            limites_ori[0] += 360
-                            limites_ori.sort()
-                        #print(f'newvitb[1] calculée: {newvitb[1]}')
-                        #print(f'encadrement de la vitesse de réflexion du ballon entre:\n{limites_ori}')
-                        if not limites_ori[0] <= newvitb[1] <= limites_ori[1]:
-                            if newvitb[1] > limites_ori[0]:
-                                newvitb[1] = limites_ori[0]
-                            else:
-                                newvitb[1] = limites_ori[1]
-                    #print(f'vitesse ballon reflechie:\n{newvitb}')
-                    listevectplot.append(newvitb)
+                    # print(f'newvitb[1] calculée: {newvitb[1]}')
+                    # print(f'encadrement de la vitesse de réflexion du ballon entre:\n{limites_ori}')
+                    if not limites_ori[0] <= newvitb[1] <= limites_ori[1]:
+                        if newvitb[1] > limites_ori[0]:
+                            newvitb[1] = limites_ori[0]
+                        else:
+                            newvitb[1] = limites_ori[1]
+                # print(f'vitesse ballon reflechie:\n{newvitb}')
+                listevectplot.append(newvitb)
 
-                    # détermine et applique la composante de vitesse associée au shoot
-                    cos_vitj_ref = math.cos(normal_angle(newtuj[1][1] - ori_ref) * math.pi / 180)
-                    if newtuj[1][0] < 0:
-                        cos_vitj_ref *= -1
-                    #print(f'cos (vref, vitj):\n{round(cos_vitj_ref, 2)}')
-                    if cos_vitj_ref > 0:
-                        if newtuj[1][0] > 0:
-                            vitshoot = [2 * newtuj[1][0] * cos_vitj_ref, newtuj[1][1]]
-                        else:
-                            vitshoot = [2 * -newtuj[1][0] * cos_vitj_ref, normal_angle(newtuj[1][1] - 180)]
-                    elif cos_vitj_ref == 0:
-                        if newtuj[1][0] > 0:
-                            vitshoot = [0.5 * newtuj[1][0], newtuj[1][1]]
-                        else:
-                            vitshoot = [0.5 * -newtuj[1][0], normal_angle(newtuj[1][1] - 180)]
+                # détermine et applique la composante de vitesse associée au shoot
+                cos_vitj_ref = math.cos(normal_angle(newtuj[1][1] - ori_ref) * math.pi / 180)
+                if newtuj[1][0] < 0:
+                    cos_vitj_ref *= -1
+                # print(f'cos (vref, vitj):\n{round(cos_vitj_ref, 2)}')
+                if cos_vitj_ref > 0:
+                    if newtuj[1][0] > 0:
+                        vitshoot = [2 * newtuj[1][0] * cos_vitj_ref, newtuj[1][1]]
                     else:
-                        vitshoot = [0, 0]
-                    newvitb = somme_vect(newvitb, vitshoot)
-                    #print(f'vitesse ballon shooté: {newvitb}')
-                    listevectplot.append(vitshoot)
-                    listevectplot.append(newvitb)
-
-                    # on vérifie qu'on ne dépasse pas la limite de vitesse
-                    if newvitb[0] > 12:
-                        newvitb[0] = 12
-
-                    newvitb = [round(newvitb[0], 2), round(newvitb[1], 0)]
-                    #print(f'vitesse finale ballon:\n{newvitb}')
-
-                    # plot pour tests
-                    """
-                    col = ['b', 'r', 'y', 'm', 'g']
-                    leg = ['vitb', 'réflecteur', 'vitb réfléchie', 'vitshoot', 'newvitb']
-                    fig, ax = plt.subplots()
-                    ax.axis([-15, 15, -15, 15])
-                    for k in range(len(listevectplot)):
-                        vect = listevectplot[k]
-                        if k != 3:
-                            ax.arrow(0, 0, vect[0] * math.cos(vect[1] * math.pi / 180),
-                                     vect[0] * math.sin(vect[1] * math.pi / 180),
-                                     color=col[k], head_width=0.5, label=leg[k])
-                            ax.plot([0, vect[0] * math.cos(vect[1] * math.pi / 180)],
-                                    [0, vect[0] * math.sin(vect[1] * math.pi / 180)],
-                                    color=col[k], label=leg[k])
-                            ax.legend(loc='upper center', shadow=True)
-                        else:
-                            vitbref = listevectplot[2]
-                            x0 = vitbref[0] * math.cos(vitbref[1] * math.pi / 180)
-                            y0 = vitbref[0] * math.sin(vitbref[1] * math.pi / 180)
-                            ax.arrow(x0, y0,
-                                     vect[0] * math.cos(vect[1] * math.pi / 180),
-                                     vect[0] * math.sin(vect[1] * math.pi / 180),
-                                     color=col[k], head_width=0.5, label=leg[k])
-                            ax.plot([x0, x0 + vect[0] * math.cos(vect[1] * math.pi / 180)],
-                                    [y0, y0 + vect[0] * math.sin(vect[1] * math.pi / 180)],
-                                    color=col[k], label=leg[k])
-                            ax.legend(loc='upper center', shadow=True)
-                    plt.show()
-                    """
-                    # on check aussi l'instant suivant au cas ou le ballon tape alternativement le tireur et autre chose
-
-                    # détermine le rect du ballon à l'instant suivant, selon la vitesse qu'on vient de calculer
-                    nextmvtb = calc_mvt(newvitb)
-                    nextposb = [round(newtub[0][0] + nextmvtb[0], 2), round(newtub[0][1] + nextmvtb[1], 2)]
-                    nextrectb = newtub[2].copy()
-                    nextrectb[0], nextrectb[1] = nextposb[0], nextposb[1]
-                    # on check s'il sera en collision avec un objet
-                    if check_collided_obj([nextrectb, 0, 20, 20], to_update_j_apri, obstacles):
-                        autre_coll = True
-
-                # s'il y a eu d'autres collision avec le ballon
-                if autre_coll:
-                    #print('plusieurs collisions avec le ballon')
-                    # a ameliorer
-                    # le ballon est immobilisé
-                    newvitb = [0, 0]
-                    # on inverse la vitesse du tireur
-                    newvitj = [-newtuj[1][0], newtuj[1][1]]
-                    newtuj[1] = newvitj
-
-                    # test: on donne au ballon la moitié de la nouvelle vitesse du joueur, puis verif
-                    if newvitj[0] < 0:
-                        newvitb = [round(-newvitj[0] / 2, 2), normal_angle(newvitj[1] + 180)]
+                        vitshoot = [2 * -newtuj[1][0] * cos_vitj_ref, normal_angle(newtuj[1][1] - 180)]
+                elif cos_vitj_ref == 0:
+                    if newtuj[1][0] > 0:
+                        vitshoot = [0.5 * newtuj[1][0], newtuj[1][1]]
                     else:
-                        newvitb = [round(newvitj[0] / 2, 2), newvitj[1]]
-                    # détermine le rect du ballon à l'instant suivant, selon la vitesse qu'on vient de calculer
-                    nextmvtb = calc_mvt(newvitb)
-                    nextposb = [round(newtub[0][0] + nextmvtb[0], 2), round(newtub[0][1] + nextmvtb[1], 2)]
-                    nextrectb = newtub[2].copy()
-                    nextrectb[0], nextrectb[1] = nextposb[0], nextposb[1]
-                    # pareil avec le tireur
-                    nextmvtj = calc_mvt(newvitj)
-                    nextposj = [round(newtuj[0][0] + nextmvtj[0], 2), round(newtuj[0][1] + nextmvtj[1], 2)]
-                    nextrectj = newtuj[2].copy()
-                    nextrectj[0], nextrectj[1] = nextposj[0], nextposj[1]
-                    next_tuJ_apri = to_update_j_apri
-                    next_tuJ_apri[colli[1]][2] = nextrectj
-                    # on check si le ballon sera en collision avec un objet
-                    if check_collided_obj([nextrectb, 0, 20, 20], next_tuJ_apri, obstacles):
-                        newtub = mvtback(newtub)
-                        newvitb = [0, 0]
+                        vitshoot = [0.5 * -newtuj[1][0], normal_angle(newtuj[1][1] - 180)]
+                else:
+                    vitshoot = [0, 0]
+                newvitb = somme_vect(newvitb, vitshoot)
+                # print(f'vitesse ballon shooté: {newvitb}')
+                listevectplot.append(vitshoot)
+                listevectplot.append(newvitb)
+
+                # on vérifie qu'on ne dépasse pas la limite de vitesse
+                if newvitb[0] > 12:
+                    newvitb[0] = 12
+
+                newvitb = [round(newvitb[0], 2), round(newvitb[1], 0)]
+                # print(f'vitesse finale ballon:\n{newvitb}')
+
+                # plot pour tests
+
+                # col = ['b', 'r', 'y', 'm', 'g']
+                # leg = ['vitb', 'réflecteur', 'vitb réfléchie', 'vitshoot', 'newvitb']
+                # fig, ax = plt.subplots()
+                # ax.axis([-15, 15, -15, 15])
+                # for k in range(len(listevectplot)):
+                #    vect = listevectplot[k]
+                #    if k != 3:
+                #        ax.arrow(0, 0, vect[0] * math.cos(vect[1] * math.pi / 180),
+                #                 vect[0] * math.sin(vect[1] * math.pi / 180),
+                #                 color=col[k], head_width=0.5, label=leg[k])
+                #        ax.plot([0, vect[0] * math.cos(vect[1] * math.pi / 180)],
+                #                [0, vect[0] * math.sin(vect[1] * math.pi / 180)],
+                #                color=col[k], label=leg[k])
+                #        ax.legend(loc='upper center', shadow=True)
+                #    else:
+                #        vitbref = listevectplot[2]
+                #        x0 = vitbref[0] * math.cos(vitbref[1] * math.pi / 180)
+                #        y0 = vitbref[0] * math.sin(vitbref[1] * math.pi / 180)
+                #        ax.arrow(x0, y0,
+                #                 vect[0] * math.cos(vect[1] * math.pi / 180),
+                #                 vect[0] * math.sin(vect[1] * math.pi / 180),
+                #                 color=col[k], head_width=0.5, label=leg[k])
+                #        ax.plot([x0, x0 + vect[0] * math.cos(vect[1] * math.pi / 180)],
+                #                [y0, y0 + vect[0] * math.sin(vect[1] * math.pi / 180)],
+                #                color=col[k], label=leg[k])
+                #        ax.legend(loc='upper center', shadow=True)
+                # plt.show()
 
                 newtub[1] = newvitb
 
@@ -623,7 +587,7 @@ def calc_mvts(to_update_j_apri, to_update_b_apri, obstacles, drifts):
                 newvitb = calc_vit_reflexion(newtub[1], ori_ref)
                 # il faut que le ballon ne rebondisse pas vers l'obstacle, ce qui peut arriver s'il tape un coin
                 if coll_plusieurs_cotes and limites_ori[0] != limites_ori[1]:
-                    # apriori il y a 2 limites_ori, avec un écart de 90°, et l'obstacle est fixe (4 ori possibles)
+                    # a priori il y a 2 limites_ori, avec un écart de 90°, et l'obstacle est fixe (4 ori possibles)
                     limites_ori.sort()
                     if limites_ori[-1] == 270 and limites_ori[0] == 0:
                         limites_ori[0] = 360
@@ -658,11 +622,6 @@ def calc_mvts(to_update_j_apri, to_update_b_apri, obstacles, drifts):
                 to_update_j_apri[colli[1]] = newtuj
                 to_update_j_apri[colli[2]] = newtuj2
 
-                # on supprime de la liste la collision indiquant le même chose vu par l'autre joueur
-                for co in collisions:
-                    if co[0] == 'JJ' and co[1] == colli[2] and co[2] == colli[1]:
-                        collisions.remove(co)
-
             else:  # colli[0] == 'JO'
 
                 tuj = to_update_j_apri[colli[1]]
@@ -677,8 +636,19 @@ def calc_mvts(to_update_j_apri, to_update_b_apri, obstacles, drifts):
 
                 to_update_j_apri[colli[1]] = newtuj
 
-        # on check tant que les replacements effectués entrainent d'autres chocs
-        collisions = collide_checker(to_update_j_apri, to_update_b_apri, obstacles)
+        # on réintegre à collisions les colli des objets en multicollisions
+        for collj in coll_j:
+            if len(collj) > 1:
+                for coll in collj:
+                    collisions.append(coll)
+        if len(coll_b) > 1:
+            for coll in coll_b:
+                collisions.append(coll)
+
+        # on détermine les nouvelles collisions apres une première résolution qu'on ajoute à la liste des collisions
+        nouv_collisions = collide_checker(to_update_j_apri, to_update_b_apri, obstacles)
+        for coll in nouv_collisions:
+            collisions.append(coll)
 
     # ne garde que [pos, vit] des to_update
     to_update_j = []
@@ -688,3 +658,4 @@ def calc_mvts(to_update_j_apri, to_update_b_apri, obstacles, drifts):
     to_update_b = to_update_b_apri[:2]
 
     return to_update_j, to_update_b
+
