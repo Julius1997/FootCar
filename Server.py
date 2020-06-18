@@ -200,7 +200,7 @@ def serveur(NBRJOUEURS, PROLONGATION, TEMPS):
 
         if msg_actu_jeu[0] == 'GameOver':
             etat += 1
-            time.sleep(10)
+            time.sleep(3)
 
     # fin de la partie
     print('Fermeture du serveur')
